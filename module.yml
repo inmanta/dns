@@ -1,7 +1,4 @@
 author: Inmanta <code@inmanta.com>
 license: Apache 2.0
 name: dns
-version: 0.1.8
-requires:
-- ip
-- std
+version: 0.2.0

@@ -1,5 +1,5 @@
 """
-    Copyright 2016 Inmanta
+    Copyright 2017 Inmanta
 
     Licensed under the Apache License, Version 2.0 (the "License");
     you may not use this file except in compliance with the License.
@@ -21,7 +21,8 @@ import ip::services
 typedef hoststring as string matching /^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.?$/
 
 entity Zone:
-    """ A dns zone.
+    """
+        A dns zone.
     """
     string hostmaster
     string domain
@@ -38,18 +39,16 @@ end
 
 implementation addNS for Zone:
     NS(server="{{master.host.name}}.", zone=self)
-#    for slave in slaves:
-#        NS(server="{{slave.host.name}}.", zone=self)
-#    end
+    for slave in slaves:
+        NS(server="{{slave.host.name}}.", zone=self)
+    end
 end
 
 implement Zone using std::none
 implement SlaveZone using std::none
 
-implement Zone using addNS when add_ns
-
-Zone slave_zones [0:] -- [0:] DnsServer slaves
-Zone master_zones [0:] -- [1] DnsServer master
+Zone.master [1] -- DnsServer.master_zones [0:]
+Zone.slaves [0:] -- DnsServer.slave_zones [0:]
 
 entity DnsServer:
     ip::ip ipaddress
@@ -67,7 +66,7 @@ entity Server extends ip::services::Server, DnsServer:
     # constraint: a dns record should exist for this hostname!
 end
 
-entity Record:
+entity ResourceRecord:
     """
         A generic dns resource record
     """
@@ -75,21 +74,31 @@ entity Record:
     string value
     string record_type
 end
+implement ResourceRecord using std::none
 
-Record records [0:] -- [1] Zone zone
+ResourceRecord.zone [1] -- Zone.records [0:]
+
+entity Record:
+    """
+        A base class for high level record entities
+    """
+    string resource=""
+end
+
+Record.zone [1] -- Zone
 
 entity A extends Record:
-    """ An A record
-        
-        :param ipaddress: The address to point this record to
+    """
+        An A record
+
+        :attr ipaddress: The address to point this record to
     """
     ip::ip ipaddress
 end
 implement A using aImpl
 
 implementation aImpl for A:
-    self.record_type = "a"
-    self.value = self.ipaddress
+    ResourceRecord(zone=self.zone, resource=self.resource, record_type="a", value=self.ipaddress)
 end
 
 entity NS extends Record:
@@ -98,17 +107,17 @@ end
 implement NS using nsImpl
 
 implementation nsImpl for NS:
-    self.value = self.server
-    self.record_type = "ns"
+    ResourceRecord(zone=self.zone, resource=self.resource, record_type="ns", value=self.server)
 end
 
 entity Cname extends Record:
-
+    string value
 end
 implement Cname using cnameImpl
 
 implementation cnameImpl for Cname:
     self.record_type = "cname"
+    ResourceRecord(zone=self.zone, resource=self.resource, record_type="cname", value=self.value)
 end
 
 entity MX extends Record:
@@ -118,8 +127,7 @@ end
 implement MX using mxImpl
 
 implementation mxImpl for MX:
-    self.record_type = "mx"
-    self.value = "{{ priority }} {{ server }}"
+    ResourceRecord(zone=self.zone, resource=self.resource, record_type="mx", value="{{ priority }} {{ server }}")
 end
 
 entity AAAA extends Record:
@@ -128,8 +136,7 @@ end
 implement AAAA using aaaaImpl
 
 implementation aaaaImpl for AAAA:
-    self.record_type = "aaaa"
-    self.value = self.ipaddress
+    ResourceRecord(zone=self.zone, resource=self.resource, record_type="aaaa", value=self.ipaddress)
 end
 
 entity PTR extends Record:
@@ -138,9 +145,7 @@ entity PTR extends Record:
 end
 
 implementation ptrImpl for PTR:
-    self.resource = dns::ip_to_arpa(ipaddress)
-    self.value = name
-    self.record_type = "ptr"
+    ResourceRecord(zone=self.zone, resource=dns::ip_to_arpa(ipaddress), record_type="ptr", value=self.name)
 end
 
 implement Record using std::none
@@ -151,9 +156,7 @@ entity TXT extends Record:
 end
 
 implementation txtImpl for TXT:
-    self.record_type = "TXT"
-    self.value = dns::quote(self.data)
+    ResourceRecord(zone=self.zone, resource=self.resource, record_type="txt", value=dns::quote(self.data))
 end
 
 implement TXT using txtImpl
-
